@@ -7,6 +7,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { startTelegramBot } from '../services/telegram_service';
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -73,3 +74,4 @@ async function startServer() {
 }
 
 startServer().catch(console.error);
+startTelegramBot();
