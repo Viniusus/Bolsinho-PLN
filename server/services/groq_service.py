@@ -8,6 +8,7 @@ import os
 import base64
 from typing import List, Dict, Any, Optional
 from groq import Groq
+from finance_services import somar_gastos, obter_gasto_por_categoria, adicionar_gasto
 
 class GroqService:
     """Serviço para interação com Groq API."""
@@ -375,6 +376,151 @@ Lembre-se: Você é o Bolsinho, um especialista confiável em investimentos e fi
         max_tokens = 4096 if has_images else 2048
         
         return self.chat_completion(messages, model=model, temperature=0.7, max_tokens=max_tokens)
+    
+    def get_financial_tools(self) -> List[Dict[str, Any]]:
+        """Define os esquemas das ferramentas (Function Calling) para o modelo."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "somar_gastos",
+                    "description": "Soma uma lista de valores de gastos e retorna o total exato.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "gastos": {
+                                "type": "array",
+                                "items": {"type": "number"},
+                                "description": "Lista de valores numéricos representando os gastos"
+                            }
+                        },
+                        "required": ["gastos"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "obter_gasto_por_categoria",
+                    "description": "Obtém o total gasto pelo usuário em uma categoria específica neste mês.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "categoria": {
+                                "type": "string",
+                                "description": "A categoria do gasto (ex: alimentacao, transporte, lazer, educacao)"
+                            }
+                        },
+                        "required": ["categoria"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "adicionar_gasto",
+                    "description": "Registra uma nova despesa no banco de dados do usuário.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "descricao": {
+                                "type": "string",
+                                "description": "Descrição curta do que foi gasto"
+                            },
+                            "valor": {
+                                "type": "number",
+                                "description": "O valor gasto"
+                            },
+                            "categoria": {
+                                "type": "string",
+                                "description": "A categoria do gasto (ex: alimentacao, transporte)"
+                            }
+                        },
+                        "required": ["descricao", "valor", "categoria"]
+                    }
+                }
+            }
+        ]
+
+    def financial_assistant_with_tools(
+        self,
+        user_message: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None
+    ) -> str:
+        """
+        Assistente financeiro conversacional (Bolsinho) integrado com ferramentas locais.
+        """
+        system_prompt = """Você é o Bolsinho, assistente financeiro pessoal. Você tem acesso a ferramentas 
+        para consultar e adicionar gastos no banco de dados do usuário. Sempre que o usuário 
+        perguntar sobre seus gastos ou quiser registrar uma nova despesa, use as ferramentas fornecidas."""
+
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        if conversation_history:
+            messages.extend(conversation_history)
+        
+        messages.append({"role": "user", "content": user_message})
+        
+        tools = self.get_financial_tools()
+
+        # 1. Primeira chamada para o modelo (com as ferramentas disponíveis)
+        response = self.client.chat.completions.create(
+            model=self.text_model,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0.3 # Temperatura menor ajuda o modelo a ser mais preciso ao preencher parâmetros
+        )
+        
+        response_message = response.choices[0].message
+        tool_calls = response_message.tool_calls
+
+        # 2. Verifica se o modelo decidiu chamar alguma ferramenta
+        if tool_calls:
+            # Anexamos a resposta do modelo (que contém o pedido de chamada da função) ao histórico
+            messages.append(response_message)
+            
+            # Mapeamento das strings de nome para as funções Python reais
+            available_functions = {
+                "somar_gastos": somar_gastos,
+                "obter_gasto_por_categoria": obter_gasto_por_categoria,
+                "adicionar_gasto": adicionar_gasto
+            }
+
+            # 3. Executamos as funções solicitadas
+            for tool_call in tool_calls:
+                function_name = tool_call.function.name
+                function_to_call = available_functions[function_name]
+                function_args = json.loads(tool_call.function.arguments)
+                
+                try:
+                    # Executa a função do finance_services.py
+                    function_response = function_to_call(**function_args)
+                except Exception as e:
+                    function_response = f"Erro ao executar a ferramenta: {str(e)}"
+
+                # Anexa o resultado da função ao histórico (role: "tool")
+                messages.append(
+                    {
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "name": function_name,
+                        "content": str(function_response),
+                    }
+                )
+
+            # 4. Segunda chamada: O modelo lê os resultados das ferramentas e gera a resposta final em texto
+            second_response = self.client.chat.completions.create(
+                model=self.text_model,
+                messages=messages,
+                temperature=0.7
+            )
+            return second_response.choices[0].message.content
+            
+        # Se não houver tool calls, retorna a resposta direta
+        if response_message.content:
+             return response_message.content
+        return "Desculpe, não consegui processar sua solicitação."
 
 
 # Instância global do serviço
