@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bolsinho-app
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=mysql://finbot:finbot_password@db:3306/finbot
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - NEWS_API_KEY=${NEWS_API_KEY}
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+      - ./server/temp:/app/server/temp
+    networks:
+      - bolsinho-network
+    restart: unless-stopped
+
+  # Banco de Dados MySQL
+  db:
+    image: mysql:8.0
+    container_name: bolsinho-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=finbot
+      - MYSQL_USER=finbot
+      - MYSQL_PASSWORD=finbot_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - bolsinho-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  bolsinho-network:
+    driver: bridge

@@ -1,0 +1,23 @@
+# FinBot - Python Dependencies
+
+# AI and LLM
+groq==0.33.0
+
+# OCR and Image Processing
+pytesseract==0.3.13
+opencv-python-headless==4.12.0.88
+Pillow==11.1.0
+pdf2image==1.17.0
+PyPDF2==3.0.1
+
+# News API
+newsapi-python==0.2.7
+
+# Web Framework Support
+python-multipart==0.0.20
+aiofiles==25.1.0
+
+# Data Processing
+numpy==2.2.6
+
+fastmcp
