@@ -144,7 +144,21 @@ export const groqService = {
       throw new Error(result.error || 'Erro ao executar o Bolsinho (multimodal)');
     }
     return typeof result.data === 'string' ? result.data : result.data;
-  }
+  },
+
+  async financialAssistantWithTools(
+    userMessage: string,
+    conversationHistory?: any[],
+    userId?: number | null,
+    extraContext?: string,
+  ) {
+    return executePythonService('groq', 'financial_assistant_with_tools', [
+      userMessage,
+      conversationHistory ?? null,
+      userId ?? null,
+      extraContext ?? null,
+    ]);
+  },
 };
 
 /**

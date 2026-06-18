@@ -20,4 +20,7 @@ aiofiles==25.1.0
 # Data Processing
 numpy==2.2.6
 
+# Database (MySQL connector for Python services)
+pymysql==1.1.1
+
 fastmcp

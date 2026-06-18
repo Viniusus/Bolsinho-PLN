@@ -5,10 +5,19 @@ Suporta análise de texto, imagens e documentos financeiros.
 """
 
 import os
+import json
 import base64
 from typing import List, Dict, Any, Optional
 from groq import Groq
-from finance_services import somar_gastos, obter_gasto_por_categoria, adicionar_gasto
+import finance_services
+from finance_services import (
+    somar_gastos,
+    obter_gasto_por_categoria,
+    adicionar_gasto,
+    listar_gastos,
+    obter_resumo_financeiro,
+    set_user_context,
+)
 
 class GroqService:
     """Serviço para interação com Groq API."""
@@ -439,28 +448,66 @@ Lembre-se: Você é o Bolsinho, um especialista confiável em investimentos e fi
                         "required": ["descricao", "valor", "categoria"]
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "listar_gastos",
+                    "description": "Lista as transações mais recentes do usuário no banco de dados.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limite": {
+                                "type": "integer",
+                                "description": "Número máximo de transações a retornar (padrão: 10)"
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "obter_resumo_financeiro",
+                    "description": "Retorna o total de gastos do mês atual agrupados por categoria.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
             }
         ]
 
     def financial_assistant_with_tools(
         self,
         user_message: str,
-        conversation_history: Optional[List[Dict[str, str]]] = None
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        user_id: Optional[int] = None,
+        extra_context: Optional[str] = None,
     ) -> str:
         """
         Assistente financeiro conversacional (Bolsinho) integrado com ferramentas locais.
         """
-        system_prompt = """Você é o Bolsinho, assistente financeiro pessoal. Você tem acesso a ferramentas 
-        para consultar e adicionar gastos no banco de dados do usuário. Sempre que o usuário 
-        perguntar sobre seus gastos ou quiser registrar uma nova despesa, use as ferramentas fornecidas."""
+        if user_id is not None:
+            set_user_context(user_id)
+
+        system_prompt = (
+            "Você é o Bolsinho, assistente financeiro pessoal. Você tem acesso a ferramentas "
+            "para consultar e registrar gastos no banco de dados do usuário. Sempre que o usuário "
+            "perguntar sobre seus gastos ou quiser registrar uma nova despesa, use as ferramentas fornecidas."
+        )
+        if extra_context:
+            system_prompt += f"\n\n{extra_context}"
 
         messages = [{"role": "system", "content": system_prompt}]
-        
+
         if conversation_history:
             messages.extend(conversation_history)
-        
+
         messages.append({"role": "user", "content": user_message})
-        
+
         tools = self.get_financial_tools()
 
         # 1. Primeira chamada para o modelo (com as ferramentas disponíveis)
@@ -469,22 +516,22 @@ Lembre-se: Você é o Bolsinho, um especialista confiável em investimentos e fi
             messages=messages,
             tools=tools,
             tool_choice="auto",
-            temperature=0.3 # Temperatura menor ajuda o modelo a ser mais preciso ao preencher parâmetros
+            temperature=0.3,
         )
-        
+
         response_message = response.choices[0].message
         tool_calls = response_message.tool_calls
 
         # 2. Verifica se o modelo decidiu chamar alguma ferramenta
         if tool_calls:
-            # Anexamos a resposta do modelo (que contém o pedido de chamada da função) ao histórico
             messages.append(response_message)
-            
-            # Mapeamento das strings de nome para as funções Python reais
+
             available_functions = {
                 "somar_gastos": somar_gastos,
                 "obter_gasto_por_categoria": obter_gasto_por_categoria,
-                "adicionar_gasto": adicionar_gasto
+                "adicionar_gasto": adicionar_gasto,
+                "listar_gastos": listar_gastos,
+                "obter_resumo_financeiro": obter_resumo_financeiro,
             }
 
             # 3. Executamos as funções solicitadas

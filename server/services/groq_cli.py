@@ -58,7 +58,16 @@ def main():
             user_content = args[0]
             conversation_history = args[1] if len(args) > 1 else None
             result = groq_service.financial_assistant_multimodal(user_content, conversation_history)
-            
+
+        elif method == "financial_assistant_with_tools":
+            user_message = args[0]
+            conversation_history = args[1] if len(args) > 1 else None
+            user_id = args[2] if len(args) > 2 else None
+            extra_context = args[3] if len(args) > 3 else None
+            result = groq_service.financial_assistant_with_tools(
+                user_message, conversation_history, user_id, extra_context
+            )
+
         else:
             result = {"error": f"Unknown method: {method}"}
         
